@@ -13,10 +13,8 @@ const fs       = require('fs');
 const multer   = require('multer');
 const ExcelJS   = require('exceljs');
 const nodemailer = require('nodemailer');
-const cron       = require('node-cron');
 const crypto = require('crypto');
 
-const speakeasy = require('speakeasy');
 const QRCode    = require('qrcode');
 
 const app  = express();
@@ -41,6 +39,9 @@ app.use(express.json());
 const bcrypt = require('bcrypt');
 const { query, withTransaction, notify } = require('./utils/db');
 const { hashPw, randomToken64 } = require('./utils/security');
+const { loadVacationPolicy, upsertVacationPolicy, daysInclusive, getEffectiveAllowance, getBalance, setBalance, ensureBalance } = require('./utils/vacation');
+const { TOTP_DIGITS, TOTP_PERIOD, totpCheck, randomSecretBase32 } = require('./utils/totp');
+const { startMonitoring } = require('./services/monitoring');
 
 // BACKEND — SUPPORT: Validierungs‑Konstanten
 const SUPPORT_CATEGORIES = new Set(['question', 'incident', 'billing', 'feature']);
@@ -82,6 +83,8 @@ const upload = multer({ storage });
 // TOTP Enrollment (nur während Einrichtung nötig; wird nach Verify geleert)
 const totpSetupStore = new Map(); // userId -> { base32, otpauthUrl, createdAt }
 
+startMonitoring();
+
 // === Telegram Helper global verfügbar machen (EINMALIG) ===
 // Voraussetzung: sendTelegram(text) existiert bereits (aus deinem Health-Notifier).
 if (typeof global.tgNotify !== 'function') {
@@ -95,90 +98,6 @@ if (typeof global.tgNotify !== 'function') {
   };
 }
 
-// ───────────────────────────────────────────────────────────────────────────────
-// Vacation Policy / Balances – Helper
-// Benötigte Tabellen (DDL separat anlegen):
-//   vacation_policy(company_id PK, mode text, uniform_days int, per_user jsonb, updated_at timestamptz)
-//   vacation_balances(company_id, user_id, remaining_days int, PRIMARY KEY(company_id,user_id))
-//   vacation_requests(id uuid PK, company_id, user_id, kind text, start_date date, end_date date,
-//                    days int, reason text, status text, decided_by uuid, decided_at timestamptz,
-//                    created_at timestamptz default now())
-// ───────────────────────────────────────────────────────────────────────────────
-async function loadVacationPolicy(companyId){
-  const rows = await query(
-    `SELECT mode,
-            uniform_days AS "uniformDays",
-            per_user     AS "perUser"
-       FROM vacation_policy
-      WHERE company_id=$1`,
-    [companyId]
-  );
-  if (!rows.length) return { mode:'uniform', uniformDays:null, perUser:{} };
-  const r = rows[0];
-  return { mode: r.mode||'uniform', uniformDays: r.uniformDays ?? null, perUser: r.perUser || {} };
-}
-
-async function upsertVacationPolicy(companyId, payload){
-  const mode = (payload?.mode === 'perUser') ? 'perUser' : 'uniform';
-  const uniformDays = (payload?.uniformDays != null) ? Number(payload.uniformDays) : null;
-  const perUser = payload?.perUser || {};
-  const rows = await query(
-    `INSERT INTO vacation_policy(company_id, mode, uniform_days, per_user, updated_at)
-     VALUES($1,$2,$3,$4, now())
-     ON CONFLICT (company_id) DO UPDATE
-       SET mode=EXCLUDED.mode,
-           uniform_days=EXCLUDED.uniform_days,
-           per_user=EXCLUDED.per_user,
-           updated_at=now()
-     RETURNING mode, uniform_days AS "uniformDays", per_user AS "perUser"`,
-    [companyId, mode, (uniformDays!=null?Math.max(0,uniformDays):null), perUser]
-  );
-  return rows[0];
-}
-
-function daysInclusive(startDate, endDate){
-  const d1 = new Date(String(startDate).slice(0,10));
-  const d2 = new Date(String(endDate).slice(0,10));
-  d1.setHours(0,0,0,0); d2.setHours(0,0,0,0);
-  return Math.max(1, Math.round((d2 - d1)/86400000) + 1);
-}
-
-async function getEffectiveAllowance(companyId, userId){
-  const p = await loadVacationPolicy(companyId);
-  if (p.mode === 'perUser') {
-    const v = Number((p.perUser||{})[String(userId)]);
-    return Number.isFinite(v) ? Math.max(0, v) : 0;
-  }
-  return Math.max(0, Number(p.uniformDays || 0));
-}
-
-async function getBalance(companyId, userId){
-  const rows = await query(
-    `SELECT remaining_days AS "remainingDays"
-       FROM vacation_balances
-      WHERE company_id=$1 AND user_id=$2`,
-    [companyId, userId]
-  );
-  return rows[0]?.remainingDays ?? null;
-}
-
-async function setBalance(companyId, userId, remainingDays){
-  await query(
-    `INSERT INTO vacation_balances(company_id, user_id, remaining_days)
-     VALUES($1,$2,$3)
-     ON CONFLICT (company_id,user_id) DO UPDATE
-       SET remaining_days=EXCLUDED.remaining_days`,
-    [companyId, userId, Math.max(0, Number(remainingDays||0))]
-  );
-}
-
-async function ensureBalance(companyId, userId){
-  const b = await getBalance(companyId, userId);
-  if (b != null) return b;
-  const init = await getEffectiveAllowance(companyId, userId);
-  await setBalance(companyId, userId, init);
-  return init;
-}
 
 function issueSessionJwt(u) {
   return jwt.sign(
@@ -195,205 +114,6 @@ function issueTempJwt(u) {
   );
 }
 
-// === TOTP (Google Authenticator) – Helper ohne externe Libs ===
-const TOTP_DIGITS = 6;
-const TOTP_PERIOD = 30; // Sekunden
-
-function base32Decode(b32){
-  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
-  const clean = String(b32 || '').toUpperCase().replace(/[^A-Z2-7]/g, '').replace(/=+$/, '');
-  let bits = '';
-  for (const ch of clean) {
-    const val = alphabet.indexOf(ch);
-    if (val < 0) continue;
-    bits += val.toString(2).padStart(5, '0');
-  }
-  const bytes = [];
-  for (let i = 0; i + 8 <= bits.length; i += 8) {
-    bytes.push(parseInt(bits.slice(i, i + 8), 2));
-  }
-  return Buffer.from(bytes);
-}
-function base32Encode(buf){
-  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
-  let bits = '';
-  for (const b of buf) bits += b.toString(2).padStart(8, '0');
-  let out = '';
-  for (let i = 0; i < bits.length; i += 5) {
-    const chunk = bits.slice(i, i + 5);
-    out += alphabet[parseInt(chunk.padEnd(5, '0'), 2)];
-  }
-  // Padding ist optional; die meisten Apps akzeptieren ohne '='
-  return out;
-}
-function hotp(secretBuf, counter){
-  const b = Buffer.alloc(8);
-  for (let i = 7; i >= 0; i--) { b[i] = counter & 0xff; counter >>= 8; }
-  const hmac = require('crypto').createHmac('sha1', secretBuf).update(b).digest();
-  const offset = hmac[19] & 0x0f;
-  const bin = ((hmac[offset] & 0x7f) << 24) |
-              ((hmac[offset+1] & 0xff) << 16) |
-              ((hmac[offset+2] & 0xff) << 8) |
-              (hmac[offset+3] & 0xff);
-  return String(bin % (10 ** TOTP_DIGITS)).padStart(TOTP_DIGITS, '0');
-}
-function totpCheck(code, secretBase32, window = 1){
-  if (!code || !secretBase32) return false;
-  const sec = base32Decode(secretBase32);
-  const now = Math.floor(Date.now()/1000);
-  const cur = Math.floor(now / TOTP_PERIOD);
-  const want = String(code).padStart(TOTP_DIGITS, '0');
-  for (let w = -window; w <= window; w++){
-    if (hotp(sec, cur + w) === want) return true;
-  }
-  return false;
-}
-function randomSecretBase32(bytes = 20){
-  const buf = require('crypto').randomBytes(bytes);
-  return base32Encode(buf);
-}
-
-// === Daily System Monitor (RAM/Disk) =========================================
-const os = require('node:os');
-const { exec } = require('node:child_process');
-
-// ENV – anpassbar
-const MONITOR_HOUR       = Number(process.env.MONITOR_HOUR || 3);     // 03:00 lokale Zeit
-const RAM_WARN_PCT       = Number(process.env.RAM_WARN_PCT || 85);    // % vom Gesamt-RAM
-const DISK_WARN_PCT      = Number(process.env.DISK_WARN_PCT || 85);   // % der Root-Partition
-const CPU_LOAD_WARN_PCNT = Number(process.env.CPU_LOAD_WARN_PCNT || 120); 
-// Warnung, wenn 1-Min-Load > (CPU-Kerne * CPU_LOAD_WARN_PCNT/100). 120% = 1.2 pro Kern
-
-function bytes(n){ return (n/(1024*1024)).toFixed(1) + ' MB'; }
-
-function getDiskUsage(mount = '/') {
-  return new Promise((resolve, reject) => {
-    // -kP = portable, in KB, eine Zeile je Mount; wir filtern auf die gewünschte Mountpoint-Zeile
-    exec(`df -kP ${mount}`, (err, stdout) => {
-      if (err) return reject(err);
-      const lines = stdout.trim().split('\n');
-      const row = lines[lines.length - 1].split(/\s+/);
-      // Filesystem, 1K-blocks, Used, Available, Use%, Mounted on
-      const usedKB = Number(row[2] || 0), availKB = Number(row[3] || 0), usedPctStr = row[4] || '0%';
-      const usedPct = Number(usedPctStr.replace('%',''));
-      resolve({ usedKB, availKB, usedPct, mount });
-    });
-  });
-}
-
-async function logSystemSnapshot() {
-  const total = os.totalmem();
-  const free  = os.freemem();
-  const used  = total - free;
-  const usedPct = Math.round((used/total)*100);
-
-  const rss = process.memoryUsage().rss; // Resident Set Size (Prozess-RAM)
-  const cores = os.cpus()?.length || 1;
-  const load1 = os.loadavg()[0]; // 1-Minuten-Load
-  const loadPct = Math.round((load1 / cores) * 100);
-
-  // Disk root
-  let disk = { usedPct: 0, usedKB: 0, availKB: 0, mount: '/' };
-  try { disk = await getDiskUsage('/'); } catch(e) { console.error('[monitor] df error:', e.message); }
-
-  // Normaler Logeintrag
-  console.log(
-    `[monitor] RAM ${usedPct}% (${bytes(used)} / ${bytes(total)}), ` +
-    `PROC ${bytes(rss)}, ` +
-    `CPU load1 ${load1.toFixed(2)} (~${loadPct}% von ${cores} cores), ` +
-    `DISK ${disk.usedPct}% (/ used)`
-  );
-
-  // Warnungen
-  if (usedPct >= RAM_WARN_PCT) {
-    console.warn(`[monitor][WARN] RAM hoch: ${usedPct}% belegt (Grenze ${RAM_WARN_PCT}%).`);
-  }
-  if (disk.usedPct >= DISK_WARN_PCT) {
-    console.warn(`[monitor][WARN] Disk hoch: ${disk.usedPct}% von ${disk.mount} (Grenze ${DISK_WARN_PCT}%).`);
-  }
-  if (loadPct >= CPU_LOAD_WARN_PCNT) {
-    console.warn(`[monitor][WARN] CPU-Last hoch: load1=${load1.toFixed(2)} (~${loadPct}% von ${cores} Cores).`);
-  }
-}
-
-// plant ersten Lauf zur nächsten MONITOR_HOUR:00, danach 24h
-function scheduleDailySystemMonitor() {
-  const now = new Date();
-  const first = new Date(now);
-  first.setHours(MONITOR_HOUR, 0, 0, 0);
-  if (first <= now) first.setDate(first.getDate() + 1);
-  const delay = first - now;
-
-  console.log(`[monitor] daily snapshot geplant für ${first.toString()} (in ${Math.round(delay/1000)}s)`);
-
-  setTimeout(() => {
-    logSystemSnapshot(); // erster lauf
-    setInterval(logSystemSnapshot, 24 * 60 * 60 * 1000); // täglich
-  }, delay);
-}
-
-// zusätzlich: kleiner „Wächter“ alle 5 Min für Sofort-Warnungen (sehr leichtgewichtig)
-setInterval(() => {
-  logSystemSnapshot().catch(() => {});
-}, 5 * 60 * 1000);
-
-// oder: nur täglich -> kommentiere den 5-Min-Timer aus und nutze die Tagesplanung:
-scheduleDailySystemMonitor();
-
-// === Daily cleanup for device_logs ==========================================
-
-const LOG_RETENTION_DAYS = Number(process.env.LOG_RETENTION_DAYS || 7);
-const LOG_CLEANUP_HOUR   = Number(process.env.LOG_CLEANUP_HOUR || 3);
-
-async function cleanupOldLogs() {
-  try {
-    const sql = `
-      DELETE FROM device_logs
-      WHERE created_at < NOW() - INTERVAL '${LOG_RETENTION_DAYS} days'
-    `;
-    const res = await query(sql);
-    console.log(`[logs] Cleanup OK: ${res.rowCount || 0} alte Einträge entfernt`);
-  } catch (err) {
-    console.error('[logs] Cleanup ERROR:', err.message || err);
-  }
-}
-
-/**
- * Plant den ersten Run auf die nächste LOG_CLEANUP_HOUR:00 (lokale Serverzeit),
- * danach alle 24 Stunden.
- */
-function scheduleDailyLogCleanup() {
-  const now = new Date();
-  const first = new Date(now);
-  first.setHours(LOG_CLEANUP_HOUR, 0, 0, 0);
-  if (first <= now) first.setDate(first.getDate() + 1);
-  const delay = first.getTime() - now.getTime();
-
-  console.log(
-    `[logs] Daily cleanup geplant für ${first.toString()} (in ${Math.round(delay/1000)}s)`
-  );
-
-  const startTimer = setTimeout(() => {
-    // Erster Run
-    cleanupOldLogs();
-    // Danach: alle 24h
-    const DAY_MS = 24 * 60 * 60 * 1000;
-    const interval = setInterval(cleanupOldLogs, DAY_MS);
-
-    // Optionale saubere Aufräum-Handler
-    const stop = () => clearInterval(interval);
-    process.on('SIGTERM', stop);
-    process.on('SIGINT',  stop);
-  }, delay);
-
-  // Falls der Prozess früher beendet wird:
-  const stopStart = () => clearTimeout(startTimer);
-  process.on('SIGTERM', stopStart);
-  process.on('SIGINT',  stopStart);
-}
-
-// Beim Serverstart aufrufen:
-scheduleDailyLogCleanup();
 
 // ───────────────────────────────────────────────────────────────────────────────
 // SSE (Server-Sent Events) – Schedule und Times
