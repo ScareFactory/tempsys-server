@@ -1,0 +1,43 @@
+name: Deploy Dry-Run (no changes)
+
+on:
+  workflow_dispatch: {}   # Manuell starten – NICHT automatisch
+
+jobs:
+  dryrun:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (nur Actions)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Prepare SSH
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts
+          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+
+      - name: SSH into server (read-only checks)
+        uses: appleboy/ssh-action@v1.1.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script: |
+            set -eux
+            cd ${DEPLOY_PATH:-/opt/tempsys-server}
+            # NUR LESEN – keine Änderungen:
+            git remote -v
+            git fetch --all --prune
+            echo "Lokaler HEAD:"
+            git rev-parse HEAD || true
+            echo "Remote origin/main:"
+            git rev-parse origin/main || true
+            echo "Diff zum Remote (wenn leer -> alles gleich):"
+            git diff --stat origin/main || true
+            echo "STATUS:"
+            git status || true
