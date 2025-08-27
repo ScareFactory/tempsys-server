@@ -1,0 +1,59 @@
+name: Deploy to Server
+
+on:
+  push:
+    branches: [ "main" ]    # bei Push auf main automatisch
+  workflow_dispatch: {}      # zusätzlich manuell auslösbar
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (nur Actions)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Prepare SSH
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts
+          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1.1.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script: |
+            set -eux
+            cd ${DEPLOY_PATH:-/opt/tempsys-server}
+
+            # 0) Backup (einfach & schnell)
+            tar -czf ../tempsys-server-backup_$(date +%Y%m%d_%H%M%S).tgz . || true
+
+            # 1) Fetch + prüfen ob es Änderungen gibt
+            git fetch --all --prune
+            if git diff --quiet HEAD origin/main; then
+              echo "Kein Update nötig – lokal == origin/main"
+              exit 0
+            fi
+
+            # 2) Lokale uncommittete Änderungen sichern (falls vorhanden)
+            git stash push -u -m "pre-deploy-$(date +%s)" || true
+
+            # 3) Sauber auf Remote-Stand setzen
+            git reset --hard origin/main
+
+            # 4) Backend neu bauen & Dienst neustarten (pm2-Beispiel)
+            cd backend
+            npm ci --omit=dev || npm install
+            # Zero-Downtime-Versuch: reload, fallback auf restart
+            pm2 reload tempsys-backend || pm2 restart tempsys-backend || true
+
+            # Optional: Frontend build
+            # cd ../frontend && npm ci && npm run build
