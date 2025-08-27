@@ -39,6 +39,8 @@ app.use(cors());
 app.use(express.json());
 
 const bcrypt = require('bcrypt');
+const { query, withTransaction, notify } = require('./utils/db');
+const { hashPw, randomToken64 } = require('./utils/security');
 
 // BACKEND — SUPPORT: Validierungs‑Konstanten
 const SUPPORT_CATEGORIES = new Set(['question', 'incident', 'billing', 'feature']);
@@ -77,41 +79,6 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage });
 
-// ───────────────────────────────────────────────────────────────────────────────
-// Helper
-// ───────────────────────────────────────────────────────────────────────────────
-async function query(sql, params) {
-  const { rows } = await pool.query(sql, params);
-  return rows;
-}
-
-async function withTransaction(fn) {
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-    const result = await fn(client);
-    await client.query('COMMIT');
-    return result;
-  } catch (e) {
-    try { await client.query('ROLLBACK'); } catch {}
-    throw e;
-  } finally {
-    client.release();
-  }
-}
-
-async function notify({ companyId, recipient, type, title, body, payload }, clientOrPool = pool) {
-  const sql = `
-    INSERT INTO messages(company_id, recipient, type, title, body, payload)
-    VALUES($1,$2,$3,$4,$5,$6)
-    RETURNING id, company_id AS "companyId", recipient, type, title, body, payload,
-              created_at AS "createdAt", read_at AS "readAt"
-  `;
-  const params = [companyId, recipient, type, title, body, payload || null];
-  const { rows } = await clientOrPool.query(sql, params);
-  return rows[0];
-}
-
 // TOTP Enrollment (nur während Einrichtung nötig; wird nach Verify geleert)
 const totpSetupStore = new Map(); // userId -> { base32, otpauthUrl, createdAt }
 
@@ -126,21 +93,6 @@ if (typeof global.tgNotify !== 'function') {
       console.warn('[TG] notify failed:', e?.message || e);
     }
   };
-}
-
-// ——— Hilfen oben einfügen (falls noch nicht vorhanden) ———
-// FRONTEND/LOGIN nutzt SHA-256? -> gleiche Hash-Logik verwenden:
-function hashPw(pw){ return crypto.createHash('sha256').update(String(pw)).digest('hex'); }
-
-// erzeugt 64-Zeichen-Zufallsstring (a-zA-Z0-9)
-function randomToken64(){
-  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-  const bytes = crypto.randomBytes(48); // 64 Zeichen ~= 48 Bytes * 4/3, wir mappen aber sicherheitshalber
-  let out = '';
-  for (let i=0; i<64; i++){
-    out += alphabet[bytes[i % bytes.length] % alphabet.length];
-  }
-  return out;
 }
 
 // ───────────────────────────────────────────────────────────────────────────────
@@ -924,14 +876,6 @@ app.put('/api/companies/:companyId/password-reset-all', async (req, res) => {
 
 // BACKEND: Account sperren – 64 Zeichen Klartext-Token anzeigen, bcrypt-Hash speichern
 // Datei: backend/index.js
-
-const ALPHABET62 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-function randomToken64(){
-  const buf = require('crypto').randomBytes(64);
-  let out = '';
-  for (let i = 0; i < 64; i++) out += ALPHABET62[buf[i] % 62];
-  return out;
-}
 
 app.put('/api/users/:id/lock', authenticate, async (req, res) => {
   try {
