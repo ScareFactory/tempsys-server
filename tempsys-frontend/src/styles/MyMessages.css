@@ -1,0 +1,95 @@
+/* src/styles/MyMessages.css */
+
+.messages {
+  display: grid;
+  gap: 24px;
+}
+
+.msg-header {
+  margin: 0 0 4px;
+  color: #1f2937;
+}
+
+.msg-section {
+  display: grid;
+  gap: 14px;
+}
+
+.msg-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.msg-empty,
+.msg-error {
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: #f3f4f6; /* grau */
+  color: #111827;
+  font-size: 0.95rem;
+}
+
+.msg-error {
+  background: #fef2f2;
+  color: #991b1b;
+  border: 1px solid #fecaca;
+}
+
+.msg-card {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 12px;
+  align-items: center;
+
+  padding: 12px 14px;
+  border-radius: 12px;
+
+  /* Grundzustand (neutral grau) */
+  background: #f3f4f6;
+  border-left: 6px solid #9ca3af;
+  color: #111827;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.06);
+}
+
+.msg-card--neutral {
+  background: #f3f4f6;
+  border-left-color: #9ca3af;
+}
+
+.msg-card--success {
+  background: #ecfdf5;      /* grünlich */
+  border-left-color: #10b981;
+}
+
+.msg-card--danger {
+  background: #fef2f2;      /* rötlich */
+  border-left-color: #ef4444;
+}
+
+.msg-card-main {
+  display: grid;
+  gap: 6px;
+}
+
+.msg-title {
+  margin: 0;
+  font-weight: 600;
+}
+
+.msg-body {
+  margin: 0;
+  opacity: 0.9;
+}
+
+.msg-meta {
+  margin: 0;
+  font-size: 0.85rem;
+  color: #6b7280;
+}
+
+.msg-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}

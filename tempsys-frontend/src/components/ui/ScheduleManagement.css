@@ -1,0 +1,29 @@
+/* src/components/ScheduleManagement.css */
+
+.schedule-container {
+  display: flex;
+  gap: 24px;
+}
+
+/* Employee list on right: gray boxes */
+.employee-list {
+  width: 200px;
+}
+.employee-list .employee-item {
+  background-color: #f5f5f5;
+  border-radius: 6px;
+  padding: 8px 12px;
+  margin-bottom: 8px;
+  cursor: grab;
+}
+
+/* Calendar day cell when has assignment: red background */
+.fc-daygrid-day.fc-day--has-assignment {
+  background-color: #ffe5e5;
+}
+
+/* Optional: red event dots */
+.fc-event {
+  background-color: #e74c3c !important;
+  border-color: #e74c3c !important;
+}

@@ -1,0 +1,83 @@
+/* ===== Global Base / Reset ===== */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body {
+  height: 100%;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: #f9f9f9;
+  color: #333;
+}
+
+code {
+  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New', monospace;
+}
+
+/* ===== Links: global KEINE rote Linie / Balken ===== */
+a {
+  text-decoration: none;
+  border-bottom: none !important;    /* killt evtl. globale Unterstreichungs-Balken */
+}
+a:hover,
+a:focus,
+a:active {
+  border-bottom: none !important;
+}
+/* falls irgendein globales ::after eine Linie zeichnet: */
+a::after {
+  content: none !important;
+}
+
+/* ===== Navigation: animierte rote Linie NUR hier erlauben ===== */
+/* WICHTIG: <nav class="site-nav"> … </nav> im Header setzen */
+.site-nav a {
+  position: relative;
+  padding-bottom: 4px;
+  color: #fff;
+  text-decoration: none;
+  margin: 0 1rem;
+}
+.site-nav a::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 2px;
+  width: 0%;
+  background-color: #d62828; /* Rot */
+  transition: width 0.3s ease;
+}
+.site-nav a:hover::after {
+  width: 100%;
+}
+
+/* Tastaturfokus sichtbar lassen (barrierefrei),
+   ohne rote Unterstreichung zu reaktivieren */
+a:focus-visible {
+  outline: 2px solid #5ab0ff;
+  outline-offset: 2px;
+}
+
+/* Motion-Preference respektieren */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+/* ===== Sonstiges ===== */
+/* Scroll-Pfeil Animation (dein vorhandenes Keyframe beibehalten) */
+@keyframes bounce {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(10px); }
+}

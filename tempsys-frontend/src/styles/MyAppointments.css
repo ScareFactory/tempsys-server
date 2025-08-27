@@ -1,0 +1,191 @@
+/* src/styles/MyAppointments.css */
+
+.appointments-wrapper {
+  padding: 16px;
+}
+
+.appointments-card {
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 8px 18px rgba(0,0,0,.08);
+  padding: 16px;
+}
+
+.appointments-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.legend {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #4b5563;
+  font-size: 0.9rem;
+}
+
+.legend-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 6px;
+  display: inline-block;
+  background: #e74c3c; /* normal event color */
+  border: 1px solid rgba(0,0,0,.2);
+}
+
+.legend-dot.striped {
+  background-image: repeating-linear-gradient(
+    45deg,
+    #fee2e2 0px,
+    #fee2e2 10px,
+    #e5e7eb 10px,
+    #e5e7eb 20px
+  );
+  background-color: transparent;
+}
+
+/* Pending-Events gestreift */
+.fc .event--pending-swap {
+  background-image: repeating-linear-gradient(
+    45deg,
+    #fee2e2 0px,
+    #fee2e2 10px,
+    #e5e7eb 10px,
+    #e5e7eb 20px
+  );
+  border-left: 4px solid #ef4444;
+  color: #1f2937;
+  cursor: not-allowed;
+}
+
+/* ========== Hübscheres, luftiges Modal ========== */
+
+.swap-modal--pretty {
+  display: grid;
+  gap: 18px;
+  min-width: 420px;
+}
+
+.swap-head {
+  display: grid;
+  grid-template-columns: 56px 1fr;
+  gap: 12px;
+  align-items: center;
+  background: linear-gradient(135deg, #eef2ff 0%, #e0f2fe 100%);
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 12px;
+}
+
+.swap-badge {
+  width: 56px;
+  height: 56px;
+  border-radius: 12px;
+  background: #fff;
+  display: grid;
+  place-items: center;
+  font-size: 22px;
+  color: #3b82f6;
+  border: 1px solid #e5e7eb;
+}
+
+.swap-head-text h4 {
+  margin: 0 0 4px;
+  color: #111827;
+}
+
+.swap-head-text p {
+  margin: 0;
+  color: #6b7280;
+}
+
+.swap-row {
+  display: flex;
+  align-items: center;
+}
+
+.swap-row--center {
+  justify-content: center;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  font-size: 0.95rem;
+  border: 1px solid #e5e7eb;
+  background: #f9fafb;
+  color: #111827;
+}
+
+.chip__icon {
+  opacity: 0.85;
+}
+
+.swap-field {
+  display: grid;
+  gap: 8px;
+}
+
+.swap-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #374151;
+  font-weight: 600;
+  font-size: 0.98rem;
+}
+
+.swap-label__icon {
+  opacity: 0.9;
+}
+
+.swap-hint {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #065f46;
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+  border-radius: 10px;
+  padding: 8px 10px;
+  font-size: 0.92rem;
+}
+
+/* Status-Banner */
+.alert {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+}
+
+.alert__icon { flex: 0 0 auto; }
+
+.alert--success {
+  background: #ecfdf5;
+  color: #065f46;
+  border-color: #a7f3d0;
+}
+.alert--error {
+  background: #fef2f2;
+  color: #7f1d1d;
+  border-color: #fecaca;
+}
+.alert--info {
+  background: #eff6ff;
+  color: #1e3a8a;
+  border-color: #bfdbfe;
+}
+
+.swap-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}

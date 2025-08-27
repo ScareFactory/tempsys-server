@@ -1,0 +1,142 @@
+.times-wrapper {
+  display: flex;
+  justify-content: center;
+  padding: 24px;
+}
+
+.times-card {
+  width: 100%;
+  max-width: 900px;
+  background: #f0f0f3;         /* graue Fläche wie bei Terminen/Login */
+  border-radius: 12px;
+  padding: 16px;
+  box-shadow: 0 10px 24px rgba(0,0,0,0.12);
+}
+
+.times-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.times-head h3 {
+  margin: 0;
+  color: #1f2937;
+}
+
+.times-legend {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  color: #374151;
+  font-size: 0.95rem;
+}
+
+.top-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 12px;
+}
+
+.times-empty {
+  background: #444;
+  color: #fff;
+  border-radius: 8px;
+  padding: 24px;
+  text-align: center;
+}
+
+.times-list {
+  display: grid;
+  gap: 10px;
+}
+
+.time-card {
+  background: #444;      /* dunkleres Grau wie Nachrichten */
+  color: #fff;
+  border-radius: 8px;
+  padding: 12px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 12px;
+}
+
+.time-left { display: grid; gap: 6px; }
+
+.time-date {
+  font-weight: 600;
+  opacity: 0.95;
+}
+
+.time-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.time-icon { opacity: 0.9; }
+
+.time-note {
+  font-size: 0.9rem;
+  opacity: 0.9;
+}
+
+/* Modal */
+.tc-modal {
+  background: #fff;
+  border-radius: 10px;
+  padding: 16px;
+  width: 90%;
+  max-width: 520px;
+  box-shadow: 0 8px 24px rgba(0,0,0,.2);
+}
+
+.tc-title { margin: 0 0 10px; text-align: center; color: #333; }
+
+.tc-form { display: grid; gap: 10px; }
+
+.tc-grid2 {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 1fr 1fr;
+}
+
+.tc-label { font-size: .95rem; color: #374151; }
+
+.tc-input, .tc-textarea {
+  width: 100%;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  padding: 10px 12px;
+  outline: none;
+  background: #fff;
+}
+
+.tc-input:focus, .tc-textarea:focus { border-color: #9ca3af; }
+
+.tc-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.tc-status {
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 0.95rem;
+}
+
+.tc-status.success {
+  background: #ecfdf5;
+  color: #065f46;
+  border: 1px solid #a7f3d0;
+}
+
+.tc-status.error {
+  background: #fef2f2;
+  color: #991b1b;
+  border: 1px solid #fecaca;
+}
